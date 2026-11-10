@@ -1,6 +1,6 @@
 # Internet Connected Autonomous Driving System: Technical Specification and Options Study
 
-Status: DRAFT v0.2 for team and supervisor review. Not yet agreed.
+Status: DRAFT v0.3 for team and supervisor review. v0.3 incorporates the team answers (5-week plan, robustness-only security, simulation only, existing models repository, concurrency target). Not yet agreed.
 
 Purpose of this document: work out the realistic options for building the system described in the project proposal, recommend one, and define requirements, interfaces, verification and a schedule so the team can decide.
 
@@ -36,7 +36,7 @@ Develop an internet-connected autonomous driving system that integrates a robust
 2. Zhang et al., 2021, "Robust reinforcement learning on state observations with learned optimal adversary", arXiv:2101.08452.
 3. Xu et al., 2022, "Trustworthy reinforcement learning against intrinsic vulnerabilities: Robustness, safety, and generalizability", arXiv:2209.08025.
 
-Observations from the references (from memory, uncertain on details): WocaR-RL trains an agent to maximise a worst-case-aware objective without running an attack at each training step, and its published experiments include a DQN variant for discrete actions (Atari) and a PPO variant for continuous control; Zhang et al. (2021) learn an optimal adversary alongside the agent (ATLA); Xu et al. is a survey. Whether WocaR-RL's public code transfers directly to highway-env is not known and is the single largest technical risk (section 5, decision D3).
+Answer to the earlier open question "is reproducing WocaR-DQN mandatory?": the question was whether this project itself has to implement and train WocaR-DQN, or may use any robust method. This is now moot: the team already has WocaR-DQN, SA-DQN and vanilla DQN implemented, trained and evaluated on highway-env (section 6A), so this project reuses them and the remaining work is the internet-connected system, the monitoring UI and the experiments around it.
 
 ### 1.5 Stakeholders
 
@@ -48,18 +48,20 @@ Observations from the references (from memory, uncertain on details): WocaR-RL t
 
 ### 1.6 Constraints
 
-The proposal states no deadline, budget, team size, hardware, language or deployment target. We therefore assume (all `[ASM]`, confirm in section 10):
+The proposal states no deadline, budget, team size, hardware, language or deployment target. The team supplied the following (source: team answers, not the proposal):
 
-- ASM-1: One semester (about 14 weeks of work), team of 3 to 5 students, part-time on this project alongside other courses.
-- ASM-2: Compute: student laptops (no GPU assumed for serving), optionally one GPU workstation or university cluster for training. Cloud spend of at most about 20 EUR/month for a demo VM.
-- ASM-3: The proposal's "autonomous vehicle" is a simulated vehicle in highway-env. No physical vehicle is required (the proposal names only simulation environments).
-- ASM-4: Remote monitoring is read-only. Teleoperation (a human driving the vehicle remotely) is not required by the proposal and is out of scope.
-- ASM-5: Open-source tools only; Python as the main language (the RL ecosystem and highway-env are Python).
-- ASM-6: Safety means simulated collision avoidance and graceful degradation, not functional-safety certification. ISO 26262, ISO 21448 (SOTIF), ISO/SAE 21434 and UNECE R155/R156 are relevant to real vehicles but not claimed here.
+- C-1: 5 weeks until hand-in, of which about 3 weeks are for building the system (the rest: week 1 for setup and verification, final week for experiments, report and demo).
+- C-2: 6 members; about 3 do most of the implementation (roles proposed in section 9.1).
+- C-3: Mostly laptops; CPU inference of the small MLP policies is enough. The system must nevertheless be deployable so that many clients can be handled concurrently (section 7A).
+- C-4: Open-source tooling, Python as the main language (assumption, follows the existing repository).
 
-### 1.7 Out of scope (explicit, so the team can contest it)
+### 1.7 Out of scope (explicit)
 
-Real vehicles or scaled hardware; teleoperation; V2X radio stacks (C-V2X, ITS-G5); perception from raw camera/lidar (the agent consumes the simulator's state observation); certification; multi-agent learning (other vehicles are scripted by highway-env).
+- Physical or scaled vehicles and hardware-in-the-loop testing. Simulation is sufficient (team decision).
+- Teleoperation, i.e. a human driving the vehicle remotely (team decision). Remote monitoring is read-only.
+- Network-security hardening (TLS, mTLS, access control, penetration testing). "Secure" in the proposal is read by the team as robustness to perturbations only. At most an optional shared token to keep a public demo from being abused (FR-14, MAY).
+- V2X radio stacks; perception from raw camera or lidar; certification (ISO 26262, ISO 21448, ISO/SAE 21434, UNECE R155/R156 are not claimed); multi-agent learning (other vehicles are highway-env scripted vehicles).
+- New robust-RL research: the models repository provides the trained agents. New training (e.g. PGD adversarial training) is an optional stretch item.
 
 ## 2. Terminology
 
@@ -82,16 +84,16 @@ Real vehicles or scaled hardware; teleoperation; V2X radio stacks (C-V2X, ITS-G5
 | FR-02 | The agent MUST run as a separate network service, reachable only through the defined protocol (section 7). The simulation MUST NOT import the policy. | MUST | P-B1, P-A |
 | FR-03 | One agent service instance MUST serve at least 3 concurrent runs (different scenarios) without cross-talk (sessions keyed by `runId`). | MUST | P-A "multiple driving environments", ASM |
 | FR-04 | The agent MUST return one discrete action per observation, optionally with Q-values (or equivalent action scores) for display. | MUST | P-B3 |
-| FR-05 | A perturbation module MUST be insertable between environment and agent with modes: `none`, uniform random noise, gradient-based attack on the agent's Q-values (FGSM and multi-step PGD, minimising the Q-value of the originally preferred action), all bounded by a configurable epsilon in normalised space. A learned-adversary attack MAY be added. Perturbations MUST be seeded and reproducible. | MUST (first three), MAY (learned) | P-B2, P-A |
+| FR-05 | A perturbation module MUST be insertable between environment and agent with modes `none`, random L-infinity noise, and the white-box gradient attacks already implemented in the models repository (10-step PGD, MinBest, worst-Q), all bounded by a configurable epsilon in the normalised observation space. The module is a port of the repository's `perturb()` code (section 6A), not a rewrite. A learned adversary MAY be added. Perturbations MUST be seeded and reproducible. | MUST (noise, PGD, MinBest, worst-Q) | P-B2, P-A |
 | FR-06 | A communication-fault module MUST emulate added latency, jitter, packet or message loss, and disconnects on the agent link, configurable per run. | MUST | P-A "unreliable communication" |
 | FR-07 | If no valid action arrives before the step deadline, the simulation MUST apply a defined safe fallback action and record the event. | MUST | P-A "safe operation" |
-| FR-08 | A training pipeline MUST produce (a) a non-robust baseline DQN and (b) at least one robust agent, with checkpoints plus metadata (algorithm, seed, epsilon, config hash, git commit). | MUST | P-B2 |
+| FR-08 | Load every checkpoint group once | All 21 selected checkpoints load; a greedy action on a fixed observation matches the models repository's own loader for the same checkpoint |
 | FR-09 | Every step MUST be logged with: `runId`, `t`, raw observation, perturbed observation, perturbation metadata (mode, epsilon, norm of delta), action, action scores, reward, termination/truncation flags, fallback flag, timestamps for send/receive. | MUST | P-B3, P-B4 |
 | FR-10 | The web UI MUST show live, per run: vehicle states, selected action, encountered perturbations, and the agent's response. At least 2 browsers MUST be able to watch the same run. | MUST | P-B3 |
 | FR-11 | The UI SHOULD show the clean versus perturbed observation, the perturbation magnitude, and whether the perturbed action differs from the action the agent would pick on the clean observation. | SHOULD | P-B3 "responses of the agent" |
 | FR-12 | The UI SHOULD replay a finished run from its log. | SHOULD | ASM |
 | FR-13 | A batch experiment runner MUST execute a grid (agent x attack x epsilon x seed x scenario) headlessly and write result tables and plots reproducibly. | MUST | P-B4 |
-| FR-14 | Control endpoints (create/stop run, change perturbation) MUST require authentication; viewing MAY use a separate read-only token. | MUST for any non-localhost deployment | ASM, P-A "secure" |
+| FR-14 | Control endpoints MAY be protected by a single shared token (config option, default off). No further access control is required. | MAY | team answer 2 |
 | FR-15 | The same scenario, seed, config and deterministic agent MUST yield identical clean observation sequences. | MUST | P-B4 (reproducible experiments), ASM |
 
 ### 3.2 Non-functional requirements
@@ -106,15 +108,15 @@ Numeric thresholds are `[ASM]`; they are chosen to be testable and will be recal
 | NFR-PERF-1 | Throughput | Headless lockstep evaluation, with a local agent loopback, achieves >= 50 steps/s per run on a laptop (uncertain; to be measured in WP0). | ASM |
 | NFR-SAF-1 | Safety | Under any communication fault in FR-06, including permanent agent loss, the simulation process never crashes or hangs; runs end normally with fallback actions recorded. | P-A |
 | NFR-SAF-2 | Safety | The fallback action is never `LANE_LEFT`/`LANE_RIGHT`/`FASTER`; it is `IDLE` or a simple rule-based controller (see D3 and D6). | ASM |
-| NFR-SAF-3 | Robustness | For the chosen epsilon values, the robust agent's crash rate under the strongest implemented attack is lower than the baseline's, with non-overlapping 95% confidence intervals; and its clean-return loss versus baseline is at most 15%. Targets are placeholders and MUST be set with the supervisor after baseline measurements. | P-B2, ASM |
+| NFR-SAF-3 | Reduced evaluation (section 8.3) through our service | Ranking WocaR < vanilla crash rate at epsilon 0.01 reproduced; deviations from the repository numbers are explained |
 | NFR-REL-1 | Reliability | The simulation client reconnects to a restarted agent within 5 s (exponential backoff) and resumes the run or fails it cleanly. A 1 hour soak test with random agent restarts shows no unhandled exception. | ASM |
 | NFR-REL-2 | Reliability | Completed steps are durably written (flushed) within 1 s; a service restart loses at most the last second of a run. | ASM |
-| NFR-SEC-1 | Security | All non-localhost traffic uses TLS (`wss://`, `https://`). | ASM |
-| NFR-SEC-2 | Security | Agent link and control API require a bearer token or equivalent; invalid or missing credentials are rejected and logged. | ASM |
-| NFR-SEC-3 | Security | All inbound messages are validated against the schema with size and rate limits; malformed input never crashes a service. | ASM |
-| NFR-SEC-4 | Security | No secrets in the repository; dependencies pinned with a lock file; container images run as non-root. | ASM |
+| NFR-ROB-1 | Robustness | Every perturbed observation satisfies the L-infinity bound (max abs delta <= epsilon + 1e-6) and stays within the observation range in the normalised space; verified on every step by a unit test and logged (`linf`). | P-B2 |
+| NFR-ROB-2 | Robustness | Malformed or non-finite observations (wrong shape, NaN, Inf, out of range) are rejected by the agent service with an `error` message; the simulation then applies the fallback action. No crash, no silent clipping. | P-A "sensor noise" |
+| NFR-SCAL-1 | Scalability | The deployment handles N concurrent sessions (placeholder N = 50 on one laptop-class machine, N = 200 with several workers; validate by load test, section 7A) with the agent round-trip p95 <= 50 ms and step-to-UI latency p95 <= 500 ms at 5 viewers per run. Numbers are placeholders until measured. | team answer 5 |
+| NFR-SCAL-2 | Scalability | Overload degrades gracefully: when the session limit is reached, new runs are refused with a clear error (HTTP 429/503) instead of slowing existing runs below their deadline. | team answer 5 |
 | NFR-PRV-1 | Privacy | The system processes only simulation data and no personal data. If user accounts are added later, a data-protection review is required first (GDPR applies if the team is in the EU). | ASM |
-| NFR-COST-1 | Cost | Serving and demo run on a laptop-class machine plus at most one small cloud VM (about 20 EUR/month). Training fits the available GPU/CPU budget (to be stated in WP0). | ASM-2 |
+| NFR-COST-1 | Track cloud cost and machine used | Within the budget agreed in Q3 |
 | NFR-FEAS-1 | Feasibility | Only open-source components; one-command local start (`docker compose up`); CI runs unit and integration tests on every push. | ASM |
 | NFR-MNT-1 | Maintainability | Protocol schemas defined once in a shared package and versioned; breaking changes bump the protocol version. | ASM |
 
@@ -160,32 +162,21 @@ Implications: FR-02, FR-03, FR-07, NFR-LAT-*, NFR-SAF-1/2.
 Recommendation: D2-a with D2-b as a stretch (SHOULD: one extra scenario, `intersection-v0` or similar, only after the main experiments run). The environment is wrapped behind a thin factory so a new scenario is a config change.
 Risks: results may not transfer to richer simulators; state this limitation in the report.
 Fallback: none needed; D2-a is the floor.
-Implications: ASM-3; hardware-in-the-loop and field tests are not planned (section 8).
+Implications: the simulation-only decision (section 1.7); hardware-in-the-loop and field tests are not planned (section 8).
 
-### D3. Learning stack and robust method
+### D3. Learning stack and robust method (reduced by the existing models repository)
 
-Decision split: (i) algorithm family, (ii) library/code base, (iii) how robustness is obtained.
-
-(i)+(iii) Robust training options:
+The team already has vanilla DQN, SA-DQN and WocaR-DQN implemented, trained and evaluated on highway-env (section 6A). The decision is therefore about reuse, not training.
 
 | Option | Description | Pros | Cons / risks | Effort |
 |--------|-------------|------|--------------|--------|
-| D3-a Baseline DQN only, plus noise augmentation | Train vanilla DQN; add random-noise training. | Easy; always works. | Weak against gradient attacks; does not meet B2's "defence strategies" in a research sense. | 1 to 2 pw |
-| D3-b PGD adversarial training (attack inside training loop) | Train on observations perturbed by an online attack (min-Q PGD). | Well understood; implementable by us; strong baseline. | Costly per step (multi-step attack per update); hyperparameter-sensitive; can reduce clean performance. | 2 to 3 pw |
-| D3-c Certified-style regularisation, SA-DQN (Zhang et al., 2020, NeurIPS; not in the proposal's reference list) | Regularise the Q-network using convex-relaxation or interval bounds on the output under perturbation (it uses the `auto_LiRPA` library; uncertain). | Principled robustness, close family to WocaR; reference code exists (uncertain). | Needs bound-propagation tooling; harder to debug; slower training. | 3 to 4 pw |
-| D3-d WocaR-DQN (Proposal C1) | Worst-case-aware training: estimates a worst-case Q-value and trains on it, avoiding an inner attack loop. | The primary reference of the proposal; efficient training; likely cleanest story for the report. | Public code targets Atari-style image inputs (uncertain); porting to a low-dimensional highway-env state and tuning epsilon is real work; it may require reimplementation from the paper. | 4 to 6 pw |
-| D3-e Learned adversary (ATLA/PA-AD style; Proposal C2) | Co-train an adversary policy. | Strongest attack class; good for evaluation. | Doubles training complexity; unstable. | 4+ pw; recommend only as evaluation attack, MAY |
+| D3-a Serve pretrained checkpoints from the models repository | Agent service loads `frame_<N>.pth` for the three groups | Zero training cost; results already exist for comparison; WocaR is the most robust against gradient attacks in the repository results | Checkpoint loading depends on the repository's `models.py` (`model_setup`) and, through it, on the vendored `auto_LiRPA`; weak clean performance (23 to 31 percent crash rate); trained on one environment configuration only | 1 to 2 pw |
+| D3-b Serve a reimplemented plain-PyTorch MLP that loads the state dict | Avoids the `auto_LiRPA` dependency at serving time | Light, fast container image | Must verify key-by-key that outputs equal the original (dueling head); small extra effort | +0.5 pw |
+| D3-c New training (PGD adversarial training, noise augmentation, retrain WocaR) | Stretch | Could improve clean/robust trade-off | Competes with the build time; repository training took 2M frames per run (compute not stated per run here) | 2 to 3 pw |
+| D3-d Other environments (merge, roundabout) | Requires training new agents | Matches the proposal's examples | Not covered by any existing checkpoint; adds training and tuning work | 3+ pw |
 
-(ii) Code base: `stable-baselines3` DQN for the baseline and for the environment wrappers (mature, uses Gymnasium); custom PyTorch for the robust variants (or the authors' code if it can be adapted). Alternative: CleanRL single-file DQN, easier to modify for custom losses. We recommend CleanRL-style single-file PyTorch for all variants so the loss changes are visible and comparable (judgement call; both are fine).
-
-Recommendation: a staged ladder, so that something robust always exists:
-1. Stage 1 (week 3): vanilla DQN baseline, trained and evaluated clean.
-2. Stage 2 (week 5): PGD adversarial training (D3-b) plus noise augmentation as the first robust agent.
-3. Stage 3 (week 9): WocaR-DQN (D3-d), ported or reimplemented, compared with Stage 1 and 2.
-4. Stretch: SA-DQN style regulariser (D3-c) and learned adversary as an attack (D3-e).
-Main risk: Stage 3 does not converge on highway-env or takes more time than planned. Fallback: report Stage 2 as the robust method and document the WocaR attempt honestly (still a valid B2 outcome: "analyse the impacts of perturbations and develop defence strategies").
-Also keep an eye on a known pitfall: highway-env rewards and the discrete meta-action make some scenarios hard for DQN without reward and observation-range tuning; allow time for this (WP2).
-Implications: FR-08, FR-05, NFR-SAF-3, NFR-COST-1 (training on CPU is feasible for MLP policies within hours per run; uncertain, measure in WP0).
+Recommendation: D3-a, with D3-b as an optimisation if the image size or dependency handling is a problem. Training (D3-c) is a stretch item. Because only `highway-v0` has trained agents, the system is specified for highway-v0 first; merge and roundabout are supported by the environment factory but without trained agents (the stub or vanilla-from-scratch is a stretch).
+Fallback: vanilla DQN checkpoints only, with the attacker. Implications: FR-05, FR-08, NFR-SAF-3.
 
 ### D4. Threat model, perturbation placement and attack set
 
@@ -198,8 +189,8 @@ Where perturbations are applied:
 | D4-c Inside the agent service ("attack mode") | Has the model; simple. | Mixes attacker and defender in one trust domain; the logged "raw" observation is then not at the sim; confusing for the security story. |
 
 Recommendation: D4-a for state perturbations (attacker module with its own copy of the checkpoint, white-box), plus D4-b (Toxiproxy or Linux `tc netem` in a container with NET_ADMIN) for communication faults, with an in-process delay/drop shim as a portable fallback (macOS laptops cannot run `tc` natively).
-Attack set: none; uniform noise; FGSM min-Q; PGD min-Q (10 to 50 steps, tuned); stretch: learned adversary. Epsilon grid in normalised observation space, e.g. {0, 0.01, 0.02, 0.05, 0.1} (placeholder, calibrate so the baseline degrades visibly at the upper end).
-Important design point: perturbations of a normalised kinematic vector may violate physical consistency (e.g. `presence` flag). Decide which features are attackable (open question Q4); the proposal does not say.
+Attack set (reused from the models repository): none; random L-infinity noise; 10-step PGD; MinBest; worst-Q; stretch: learned adversary. Epsilon grid in normalised observation space as in the repository: {0, 0.0025, 0.005, 0.0075, 0.01}; the models were trained at epsilon 0.005 (SA-DQN and WocaR), and vanilla DQN reaches about 74 percent crash rate at 0.01. The earlier draft grid (up to 0.1) was far too large for these models.
+Important design point: perturbations of a normalised kinematic vector may violate physical consistency (e.g. `presence` flag). Decide which features are attackable (open question Q1); the proposal does not say.
 Implications: FR-05, FR-06, FR-09, FR-15.
 
 ### D5. Communication technology and protocol
@@ -258,19 +249,9 @@ Recommendation: D8-a with a plain-JS page (optionally with Chart.js or uPlot fro
 Fallback: D8-b for the scene (frames), with D8-a-style panels for numbers.
 Implications: FR-10, FR-11, FR-12, NFR-LAT-3.
 
-### D9. Security approach
+### D9. Security approach (reduced: robustness only)
 
-Threat model (ASM; to be reviewed): (T1) unauthorised party sends observations or actions or controls runs; (T2) man-in-the-middle tampers with observations or actions on the wire; (T3) denial of service on the agent; (T4) malformed input; (T5) adversarial perturbation of the sensed state (handled by the robust agent, not by transport security). Transport security does not make the agent robust: an attacker who controls the sensor still sends authenticated data. The report should keep T2 and T5 separate.
-
-| Option | Pros | Cons |
-|--------|------|------|
-| D9-a None (trusted LAN) | Zero effort. | Contradicts "secure" in B2 and A; indefensible when exposed. |
-| D9-b TLS terminated by a reverse proxy (Caddy or nginx; Caddy automates certificates) plus bearer tokens (static API keys or short-lived signed tokens) | Meets T1 to T3 basics with little code; standard. | Token management; no per-device identity. |
-| D9-c Mutual TLS between sim and agent | Strong device identity; resists T1 and T2. | Certificate issuance and rotation burden for a student team; harder to debug. |
-| D9-d Private overlay network (WireGuard or Tailscale) | Little application code; works over the internet. | Not an application-level control; not present for browser viewers who are not in the overlay. |
-
-Recommendation: D9-b, with schema validation and rate limits (NFR-SEC-3), read-only viewer tokens, non-root containers; D9-d optional for the WAN demo. mTLS MAY be added if time remains.
-Fallback: D9-d only (private network) with tokens.
+Team decision: "secure" means robustness to perturbations. The threat model covers (T1) adversarial and random perturbation of the observation, (T2) communication faults (delay, loss, disconnect), (T3) malformed or non-finite input. Network security (TLS, mTLS, authentication, DoS protection) is out of scope. The one optional item is a shared token on the control endpoints so that a publicly reachable demo cannot be driven by strangers (FR-14, MAY). Options considered: none (default on localhost/LAN), shared token (optional), TLS reverse proxy (not planned). Recommendation: none by default, shared token optional.
 
 ### D10. Deployment
 
@@ -278,7 +259,7 @@ Fallback: D9-d only (private network) with tokens.
 |--------|------|------|
 | D10-a Local processes (`uv run ...`) | Fastest for development. | Not reproducible for others. |
 | D10-b Docker Compose on one machine (sim, agent, optional proxy) | One-command start; networks can be separated; supports `tc`/Toxiproxy experiments. | Localhost is not the internet; Docker on macOS adds a VM layer (latency measurements differ). |
-| D10-c Compose on 2 hosts: sim on laptop, agent on a small cloud VM | Real WAN round-trip times and exposure; best demonstration of "internet-connected". | VM cost and admin; TLS/auth must work; the evaluation is not reproducible because network conditions vary. |
+| D10-c Compose on 2 hosts: sim on laptop, agent on a small cloud VM | Real WAN round-trip times and exposure; best demonstration of "internet-connected". | VM cost and admin; the evaluation is not reproducible because network conditions vary. |
 | D10-d Kubernetes or managed ML serving | Scalable, rollouts. | Disproportionate for this project. |
 
 Recommendation: D10-b as the default and for all reproducible experiments, D10-c once for a demo and for a measured WAN latency data point (agent on a VM in a nearby region; record RTT percentiles). Training happens offline on available GPU/CPU and is not part of runtime deployment.
@@ -290,14 +271,40 @@ Fallback: D10-a/b only; WAN data point replaced by emulated latency.
 |----------|-------------|----------|
 | D1 Agent location | Remote agent service with local safe fallback (D1-d) | In-process agent for experiments |
 | D2 Platform | highway-env (+1 extra scenario if time) | n/a |
-| D3 Robust method | Ladder: DQN, PGD-AT, WocaR-DQN; SA-DQN and learned adversary as stretch | PGD-AT as the robust method |
+| D3 Robust method | Serve the existing pretrained vanilla/SA-DQN/WocaR-DQN checkpoints; reuse the repository attack code; new training only as stretch | Serve vanilla DQN only if loading WocaR checkpoints fails |
 | D4 Perturbation | Sim-side white-box attacker; separate comm-fault module | In-process delay shim only |
 | D5 Protocol | WebSocket + JSON, REST control | HTTP `POST /act` |
 | D6 Time model | Selectable lockstep or real-time | Lockstep only |
 | D7 Storage | SQLite + JSONL export + Parquet for batches | JSONL only |
 | D8 UI | Canvas page from events and road geometry | Streamed frames |
-| D9 Security | TLS via reverse proxy + bearer tokens | Private overlay + tokens |
+| D9 Security | Robustness only (observation perturbation, communication faults, input validation); optional shared token | none needed |
 | D10 Deployment | Docker Compose; one WAN demo on a VM | Local processes |
+
+## 6A. Existing assets: the models repository
+
+Source: https://github.com/Internet-CADS/models (read-only; facts below were checked in `README.md`, `entries/05_wocar_dqn_r3/` including `evaluate.py`, `highway_adapter.py`, `defaults.json`, `config_highway_wocar.json`, `visualize_perturbation.py`, and in the checkpoint folders). The checks were done on a local worktree of that repository, which may not be identical to branch `main`; re-verify against `main`.
+
+| Fact | Value (verified in files unless marked) |
+|------|---------------------------------------|
+| Environment | `highway-v0`, 4 lanes, 15 other vehicles, 60-step episodes (`duration` 60), `simulation_frequency` 5, `policy_frequency` 1, off-road terminal |
+| Observation | Kinematics, 10 vehicles x (presence, x, y, vx, vy), normalised, relative (`absolute: false`), flattened to 50 inputs by `highway_adapter.py` (`LegacyHighwayEnv`, which also converts the Gymnasium 5-tuple to a 4-value API) |
+| Actions | 5 discrete meta-actions: 0 LANE_LEFT, 1 IDLE, 2 LANE_RIGHT, 3 FASTER, 4 SLOWER |
+| Reward | collision -2, right lane 0.1, high speed 0.4, no reward normalisation |
+| Network | Dueling MLP 50-128-128-5 (`model_width` 1); checkpoint is the state dict of `model.features`, loaded in `evaluate.py` via `model_setup(...)` then `features.load_state_dict` |
+| Checkpoints | `entries/05_wocar_dqn_r3/artifacts/run_2/<vanilla_dqn\|sa_dqn\|wocar_dqn>/model_<seed>/frame_<N>.pth`, about 98 KB each, seeds 1 to 7, every 50k frames to 2M; many hundreds of files are tracked in git (840 `run_2` checkpoints on the checked branch) |
+| Attacks | `perturb()` in `evaluate.py`: `random_linf`, `pgd` (10 steps, cross-entropy against the best action), `minbest`, `worst_q`; budget epsilon in normalised space; certification via `is_certified()` (CROWN-IBP through `auto_LiRPA`) |
+| Reported results (README, rev 3, 7 seeds, 300 episodes) | Crash rate, clean: vanilla 23, SA-DQN 29, WocaR 31 percent. Gradient attacks eps 0.005: 44 / 43 / 38. Eps 0.01: 74 / 61 / 53. Random noise eps 0.005: 26 / 31 / 32. WocaR is most robust against gradient attacks; SA-DQN is not reliably better than vanilla |
+
+What it provides: trained policies, attack code, an evaluation harness, a perturbation visualisation script and HTML reports. What it does not provide:
+
+- No serving code: no network service, no session handling, no monitoring UI, no logging pipeline.
+- Evaluation code is a batch script using multiprocessing and a vendored fork of the authors' code; `evaluate.py` changes the working directory and manipulates `sys.path` at import, so it must be wrapped or its attack code copied rather than imported as a library.
+- Dependencies: PyTorch, highway-env, the vendored `auto_LiRPA` (needed by `model_setup(robust_model=True)` and certification; whether plain inference needs it is not verified, see D3-b), plus a long `requirements.txt` including Atari and gym packages.
+- Weak driving quality: clean crash rate 23 to 31 percent, robust agents drive worse clean than vanilla, no help against random noise, and training instability (late collapse) is documented.
+- Only one environment configuration (`highway-v0`, 60 steps). No merge or roundabout agents.
+- Licence and authorship: the repository has no top-level LICENSE file in the checked tree; the vendored `auto_LiRPA` carries its own LICENSE (I believe it is BSD-3-Clause; verify), and `upstream/` is derived from the WocaR-RL authors' code, whose licence was not checked. For a student project and a report this is probably fine, but the team should state attribution in the report and check licences before publishing (Q5).
+
+Consequences for this specification: the agent service wraps these checkpoints (FR-08), the perturbation module ports `perturb()` (FR-05), the environment configuration of the service must equal the repository configuration for the agents to behave as evaluated, and the experiment section reproduces a subset of the repository results as a system check.
 
 ## 6. Recommended architecture
 
@@ -314,7 +321,7 @@ Fallback: D10-a/b only; WAN data point replaced by emulated latency.
 | Data store | `runs`, `steps`, `events` tables; JSONL export. | SQLite (WAL) |
 | Experiment runner | Headless batch grid from a YAML config; calls the same env wrapper, perturbation module and agent (local loopback or remote); writes Parquet and plots. | Python CLI, pandas, matplotlib |
 | Training pipeline | Offline training of baseline and robust agents; checkpoints with metadata. | PyTorch, Gymnasium; not deployed |
-| Reverse proxy | TLS, auth enforcement for the WAN deployment. | Caddy or nginx |
+| Reverse proxy (S-b/S-c) | Routing by `runId` and load balancing across workers; no security role. | Caddy, nginx or Traefik |
 | Shared `protocol` package | Pydantic models, constants, JSON Schema export. | Python |
 
 ### 6.2 Diagram
@@ -341,7 +348,7 @@ flowchart LR
         TRAIN[Training pipeline: DQN, PGD-AT, WocaR-DQN]
         EXP[Experiment runner]
     end
-    UI <-->|REST + WS events, TLS, token| API
+    UI <-->|REST + WS events| API
     API --> RUN
     RUN --> ENV
     ENV -->|clean obs| PERT
@@ -449,6 +456,51 @@ The `hello` handshake lets the agent verify observation and action specification
 
 Fields: `runId, t, obs_raw, obs_perturbed, perturbation{mode, epsilon, linf}, action, scores, clean_action?, reward, terminated, truncated, fallback, late_reply, sent_at, recv_at, rtt_ms, vehicles?` (vehicles optional, enabling replay without re-simulation).
 
+## 7A. Scalability and deployment
+
+Requirement from the team: laptops for development, but the system must be deployable to serve many clients concurrently. Nothing below has been measured yet; where a bottleneck is named it is a hypothesis to be tested.
+
+### 7A.1 Where the load is (hypotheses, to be measured)
+
+- Policy inference: a 50-128-128-5 MLP on CPU is tiny (about 20k parameters, order of tens of microseconds to under a millisecond per observation; to be measured). Gradient attacks, however, cost about 10 forward and backward passes per step, so a sim-side attacker is noticeably more expensive than inference and runs in the simulation process.
+- Simulation stepping: the repository notes that going from 15 to 25 other vehicles made the simulator 2.7 times slower per step, which shows that highway-env stepping cost depends strongly on vehicle count and may dominate. Absolute steps per second were not found in the files, so this is to be measured (NFR-PERF-1).
+- Web UI: one `state` event per step per run times the number of viewers; at 1 to 5 Hz this is small per run but multiplies with viewers. JSON serialisation and WebSocket fan-out in a single Python process may bottleneck first at hundreds of viewers. To be measured.
+- Real-time pacing makes sessions wall-clock bound, so N sessions means N concurrent loops; the event loop must never run CPU-heavy work (simulation, PGD) directly.
+
+### 7A.2 Deployment options
+
+| Option | Description | Pros | Cons |
+|--------|-------------|------|------|
+| S-a Single async process | One FastAPI/uvicorn process, many sessions as asyncio tasks, simulation and attacks run in a thread or process pool | Simplest; lowest latency; fine for laptop demo and N in the tens | Python GIL: CPU-bound stepping limits scaling to roughly one core unless stepping is in separate processes; a crash kills all sessions |
+| S-b Several worker processes behind a reverse proxy | N uvicorn/gunicorn workers behind Caddy or nginx (or Traefik) | Uses all cores; isolates crashes | A run and its viewers must reach the same worker (sticky routing by `runId`); state must be per worker or externalised; more config |
+| S-c Containers with Docker Compose | Separate containers for sim workers, agent service replicas, proxy, optional store; `docker compose up --scale` | Reproducible; one command; same files for laptop and VM | Docker overhead on macOS; shared state design still needed |
+| S-d Cloud VM running S-c | One or a few VMs, Compose as above | Real WAN latency and more cores | Cost and admin; results depend on network |
+| S-e Kubernetes / autoscaling | Orchestrated scaling | Scales out | Disproportionate for a 3-week build; not recommended |
+
+Recommendation: build S-a first with clean boundaries, deliver S-c (Compose with the agent service as a separately scalable container and the sim service replicable), and use S-d for the single concurrency/WAN demonstration. S-b is the scaling path inside S-c.
+Fallback: S-a only, with the load test reporting the measured limit honestly.
+
+### 7A.3 Session and state design (needed for any scaling option)
+
+- A run is the unit of scaling: one simulation environment, one agent session, one event stream, owned by exactly one worker process for its whole life. Environments are not shared between runs.
+- The agent service is stateless per step: the observation is self-contained (`obsSpec` has no frame stacking), the model is loaded once per process, and the session only holds `runId`, `seq` and model id. Any agent replica can serve any step, which allows round-robin load balancing and horizontal scaling of agents. Sticky routing is only needed per WebSocket connection.
+- The sim worker owns the mutable state (environment, RNG, step counter, attacker state, event buffer). Routing by `runId` (hash or a lookup table in the proxy or a small registry) sends REST calls and viewer WebSockets to the owning worker. Alternative: write all events to a shared store (SQLite is not suited to many writers across hosts; Redis or PostgreSQL would be) and let any worker serve viewers; this is more infrastructure and is only justified beyond a single host.
+- Per-run event history is bounded (ring buffer with a stated size); viewers joining mid-run receive the road geometry plus the last K events (the earlier draft buffered unbounded history).
+- Admission control: maximum sessions per worker (NFR-SCAL-2); a `/healthz` and a `/load` endpoint expose active sessions, deadline-miss rate and event-loop lag for the proxy and the load test.
+- Seeds and RNG are per run, so results do not depend on how runs are distributed over workers.
+
+### 7A.4 Load-test requirements
+
+| ID | Test | Placeholder parameters | Pass criterion (placeholder) |
+|----|------|------------------------|-------------------------------|
+| LT-1 | N concurrent real-time runs, 1 Hz decisions, 5 viewers each | N = 10, 50, 200 | Agent RTT p95 <= 50 ms, p99 <= 150 ms; deadline-miss rate <= 1 percent; UI latency p95 <= 500 ms |
+| LT-2 | Lockstep batch throughput (headless) on one laptop and one VM | 1, 4, 8 workers | Report steps/s per worker and scaling efficiency (no threshold; informs NFR-PERF-1) |
+| LT-3 | Same as LT-1 with PGD attack enabled in all runs | N = 10, 50 | Report additional CPU per step; no deadline-miss increase beyond placeholder 5 percent |
+| LT-4 | Overload: 2x the session limit | | Excess runs refused (429/503); existing runs unaffected (NFR-SCAL-2) |
+| LT-5 | Worker kill during load | | Only the sessions on that worker fail, with a defined status; others continue |
+
+Tool suggestion: a small asyncio Python client (websockets) that creates runs and subscribes viewers; Locust or k6 are alternatives but need WebSocket plugins (uncertain). Record CPU, memory and event-loop lag with `psutil` or `docker stats`. Values N and thresholds are placeholders to be set after a first measurement in week 1 or 2.
+
 ## 8. Verification and validation plan
 
 ### 8.1 Levels and tools
@@ -459,11 +511,11 @@ Fields: `runId, t, obs_raw, obs_perturbed, perturbation{mode, epsilon, linf}, ac
 | Integration (software-in-the-loop) | sim + agent in Compose; protocol conformance; concurrency | pytest, pytest-asyncio, httpx, websockets |
 | Simulation experiments | Robustness grids (agent x attack x epsilon x seed x scenario) | Experiment runner, pandas, bootstrap CIs |
 | Network impairment | Delay, jitter, loss, disconnect on the agent link | In-process shim; Toxiproxy or `tc netem` in Linux containers |
-| Security checks | Auth, TLS, malformed input, rate limits | pytest, `curl`, `openssl s_client`, a fuzzing script (e.g. Hypothesis) |
+| Robustness checks | Malformed and non-finite observations, perturbation bounds | pytest, a property-based test (e.g. Hypothesis) |
 | Soak | 1 hour continuous runs with agent restarts | script |
 | UI | Manual scripted walkthrough, plus a headless-browser smoke test (Playwright) | |
 
-Hardware-in-the-loop and field tests: not applicable under ASM-3. If the team later adds a scaled vehicle, add a HIL level and a latency budget measurement over the real radio link.
+Hardware-in-the-loop and field tests: not applicable under the out-of-scope decision (section 1.7). If the team later adds a scaled vehicle, add a HIL level and a latency budget measurement over the real radio link.
 
 ### 8.2 Requirement-to-test matrix
 
@@ -479,90 +531,102 @@ Hardware-in-the-loop and field tests: not applicable under ASM-3. If the team la
 | FR-10, FR-11, NFR-LAT-3 | Two browsers, 5 viewers load test | Both show identical state; UI latency p95 <= 500 ms; the perturbation and action fields visible each step |
 | FR-12 | Replay a finished run | Replay equals the original scene sequence |
 | FR-13 | Run a small grid twice | Same result tables (within tolerance for GPU nondeterminism) |
-| FR-14, NFR-SEC-1 to 4 | Unauthenticated, wrong-token, plain-HTTP and oversize-message requests | Rejected with 401/403 or closed connection; logged; no crash; TLS enforced on the proxy; image scans show non-root user |
-| NFR-LAT-1, NFR-LAT-2 | 10^4 steps, single session, loopback and LAN | p95 thresholds met; if not, document the measured values and revise the threshold with justification |
+| NFR-ROB-1, NFR-ROB-2 | Unit tests with crafted observations (NaN, wrong shape, out of range); bound checks over a full attack run | Bound holds on 100% of steps; invalid input rejected, run continues with fallback |
+| NFR-LAT-1, NFR-LAT-2, NFR-SCAL-1, NFR-SCAL-2 | Load test (section 7A) with N sessions, 10^4 steps; overload test above the limit | Percentile thresholds met at placeholder N, or measured values recorded and thresholds revised with justification; overload refused cleanly |
 | NFR-PERF-1 | Headless loop benchmark | >= 50 steps/s or revise |
 | NFR-REL-2 | Kill the sim process during a run | At most the last second of data lost; no corrupt DB (SQLite WAL integrity check) |
 | NFR-SAF-3 | Main experiment (below) | Criterion as stated in NFR-SAF-3, after thresholds are agreed |
 | NFR-COST-1 | Track costs and training hours | Within budget stated in WP0 |
 
-### 8.3 Main experiment (B4)
+### 8.3 Main experiment (B4), reusing the models repository
 
-- Agents: A0 vanilla DQN, A1 PGD adversarially trained DQN, A2 WocaR-DQN; stretch A3 SA-DQN-style.
-- Attacks (evaluation-time): none, uniform noise, FGSM min-Q, PGD min-Q (stronger settings than used in training), stretch: learned adversary.
-- Epsilon grid: placeholder {0, 0.01, 0.02, 0.05, 0.1} in normalised space; calibrate in WP4.
-- Scenarios: `highway`, `merge`, `roundabout` (each agent trained per scenario; a multi-scenario agent is stretch).
-- Seeds: at least 3 training seeds per agent and scenario; at least 100 evaluation episodes per cell with different environment seeds. More seeds are better; RL variance is large, so report the spread.
-- Metrics: mean episode return, crash rate, mean speed, episode length, merge success where defined, deadline-miss and fallback rates (communication experiments), action-flip rate under attack, inference latency.
-- Statistics: mean with bootstrap 95% confidence intervals; state the comparisons made in advance.
-- Communication experiment: for the best agent, delay 0/100/300/1000 ms and loss 0/10/30% in real-time mode, measuring crash rate and return, with and without the local fallback.
-- Caveat to include in the report: evaluation attacks are only lower bounds on the true worst case; a robust result against PGD does not prove robustness against stronger or adaptive attacks.
+- Agents: the 21 checkpoints (vanilla DQN, SA-DQN, WocaR-DQN; seeds 1 to 7) at the peak-of-mean frames of the repository (vanilla 1.5M, SA-DQN 1.6M, WocaR 1.45M; to be verified from `report.py` output). The full repository evaluation (7 seeds, 300 episodes, 4 attacks) already exists and is the reference; we do not repeat it in full.
+- Our experiment is a reduced one through our system: all three groups, at least 3 seeds each, epsilon in {0, 0.005, 0.01}, attacks none, random, PGD, worst-Q (MinBest optional), 100 episodes per cell, scenario highway-v0 with the repository configuration (15 vehicles, 60 steps, Kinematics 10 x 5, 5 meta-actions, 1 Hz decisions). It is a system-validation experiment: do we reproduce the repository ranking through the networked pipeline?
+- Communication experiment (new, not in the repository): for the WocaR and vanilla models, delay 0/100/300/1000 ms and loss 0/10/30 percent in real-time mode, measuring crash rate, return, fallback rate; with and without fallback `IDLE`.
+- Metrics: crash rate (main), mean return, episode length, action-flip rate, fallback and deadline-miss rate, latency percentiles.
+- Statistics: mean over seeds with spread (the repository shows the seed spread dominates; per-seed 95 percent bootstrap CIs inside a seed are not enough). Comparisons stated in advance.
+- Caveats for the report: the attacks are lower bounds on true worst-case behaviour; the clean crash rate of the agents is high (23 to 31 percent), so absolute safety is not claimed; one environment configuration only.
 
-## 9. Work breakdown and schedule
+## 9. Work breakdown and schedule (5 weeks, about 3 build weeks)
 
-Assumes 14 weeks, 3 to 5 students (ASM-1). Risk-first: the RL work and the environment feasibility start in week 1, in parallel with the skeleton. Effort in person-weeks (pw); the total of about 40 pw (sum of the table) fits 4 people over 10 to 12 productive weeks only with little slack, so the stretch items are the buffer; items marked (S) are droppable stretch.
+Cut line (reflecting the team answers): everything labelled MUST is needed for the proposal objectives; SHOULD is dropped first when late; STRETCH only if there is slack.
 
-| WP | Content | Effort | Depends on | Risk |
-|----|---------|--------|------------|------|
-| WP0 Feasibility and decisions (week 1 to 2) | Verify highway-env facts (section 4); benchmark step speed; train a tiny DQN on `highway-v0` to check learnability; read WocaR code and assess porting; decide compute budget; resolve open questions Q1 to Q6. | 2 | | High information value |
-| WP1 Walking skeleton (week 1 to 3) | Protocol package; sim service with control loop; stub agent (constant `IDLE`); minimal UI page; Compose; e2e test. This is essentially the draft's v0.1 scope, corrected. | 3 | WP0 partial | Low |
-| WP2 Baseline agent (week 2 to 5) | Reward/observation configuration; vanilla DQN per scenario; evaluation script; checkpoint format. | 3 | WP0 | Medium: tuning may be slow |
-| WP3 Agent service (week 3 to 5) | Serve checkpoints; sessions per run; hello handshake; metrics. | 2 | WP1, WP2 (format) | Low |
-| WP4 Perturbation and fault modules (week 4 to 7) | Noise, FGSM, PGD with bounds; fault shim; fallback; logging of raw/perturbed; baseline degradation curves. | 3 | WP2 | Medium |
-| WP5 Robust training (week 5 to 10) | PGD-AT (week 5 to 7), WocaR-DQN port/reimplementation (week 6 to 10), per scenario; (S) SA-DQN, (S) learned adversary. | 8 | WP2, WP4 | High: highest technical risk |
-| WP6 UI (week 4 to 10) | Road geometry rendering, decisions and perturbation panels, charts, multi-viewer; (S) replay. | 4 | WP1 | Medium |
-| WP7 Data store and experiment runner (week 5 to 9) | SQLite, export, batch grid, Parquet, plots. | 3 | WP1, WP4 | Low |
-| WP8 Security and deployment (week 8 to 11) | Reverse proxy TLS, tokens, validation, rate limits, non-root images, WAN demo on VM, latency data point. | 3 | WP3 | Medium: environment issues |
-| WP9 Experiments and analysis (week 10 to 13) | Main grid (section 8.3), communication experiments, statistics. | 4 | WP5, WP7 | Medium: compute time |
-| WP10 Report and demo (week 11 to 14) | Writing, figures, demo script, final integration test, buffer. | 4 | all | |
-| Cross-cutting | CI, code review, weekly integration, risk review. | 2 | | |
+| Class | Items |
+|-------|-------|
+| MUST | Agent service serving the 3 checkpoint groups (FR-02, FR-04, FR-08); simulation service with run lifecycle, control loop and logging (FR-01, FR-09, FR-15); perturbation module ported from the repository (FR-05, NFR-ROB-1); input validation and fallback (FR-07, NFR-ROB-2, NFR-SAF-1/2); communication-fault shim (FR-06); live web UI with vehicle states, actions, perturbations, agent response (FR-10); concurrency to N sessions and a load test (FR-03, NFR-SCAL-1/2); reduced main experiment and communication experiment (FR-13, section 8.3); report |
+| SHOULD | UI clean-versus-perturbed display and `cleanAction` (FR-11); replay (FR-12); SQLite store (JSONL files are enough for MUST); Docker Compose with scaling (S-c); real-time mode with deadline analysis |
+| STRETCH | New training (PGD adversarial training, other environments); learned adversary; WAN demo on a VM; optional shared token (FR-14); plain-PyTorch serving model (D3-b) unless needed for the image |
 
-Milestones:
+### 9.1 Roles (proposal for the team to accept or change)
 
-| Milestone | Week | Exit criterion |
-|-----------|------|----------------|
-| M0 Decisions frozen | 2 | WP0 findings written; open questions Q1 to Q6 answered; compute plan agreed |
-| M1 Walking skeleton | 3 | Compose up; run in browser; stub agent; e2e test passes |
-| M2 Baseline trained | 5 | Baseline DQN per scenario, clean metrics reproducible; served via the agent service |
-| M3 Attacks and faults | 7 | Baseline degradation curve under FGSM/PGD; fault tests pass; fallback verified |
-| M4 First robust agent | 8 | PGD-AT agent beats baseline under PGD (even a modest margin), logged |
-| M5 System complete | 10 | UI shows all B3 items; security checks pass; WAN demo done |
-| M6 Final results | 13 | Main experiment complete, results frozen |
-| M7 Delivery | 14 | Report and demo |
+| Member | Role | Main responsibility |
+|--------|------|---------------------|
+| 1 (implementer) | Simulation service lead | Control loop, run manager, protocol package, logging, concurrency design |
+| 2 (implementer) | Agent and perturbation lead | Checkpoint loading, agent service, port of attack code, fault shim, input validation |
+| 3 (implementer) | UI and deployment lead | Web UI, event stream, Docker Compose, deployment, load-test harness |
+| 4 | Evaluation lead | Experiment runner, reproduction of repository numbers, communication experiment, statistics |
+| 5 | Verification and documentation lead | Test plan execution, CI, requirement traceability, report structure and figures |
+| 6 | Integration and project lead | Weekly integration, risk list, supervisor contact, licence/attribution check, stretch item (training) if capacity |
 
-Scope cuts, in this order if late: replay (FR-12); second environment; learned adversary and SA-DQN; WAN demo (use emulation); real-time mode analysis (keep lockstep). Not cut: B1 service with remote agent, a robust agent compared with a baseline under attack, the monitoring UI, and the experiments.
+### 9.2 Work packages and schedule
 
-Key dependencies: WP5 needs the attack code from WP4 (also used for evaluation), so WP4 starts as soon as a baseline checkpoint exists. A pragmatic shortcut: start WP4's attack code against a throwaway untrained or early-checkpoint network to unblock WP5.
+Riskiest items first: checkpoint loading, the attack port and the concurrency design are tested in week 1.
+
+| WP | Content | Week | Owner (proposed) | Depends on | Risk |
+|----|---------|------|-------------------|------------|------|
+| WP0 | Verify models-repo facts on `main`; load all 3 groups and reproduce one greedy action and one attack outcome outside the repository; measure step speed and inference time; decide D3-a versus D3-b; fix configuration equal to the repository; first load-test numbers on a trivial loop | 1 | 2, 4 | | High information value |
+| WP1 | Protocol package and walking skeleton: sim service, agent service wrapper, minimal UI, one run end to end | 1 to 2 | 1, 2, 3 | WP0 | Low |
+| WP2 | Perturbation module (port of `perturb()`), bound tests, fallback, input validation | 2 | 2 | WP0 | Medium |
+| WP3 | Fault shim and real-time or lockstep deadline logic | 2 to 3 | 1 | WP1 | Medium |
+| WP4 | UI: road geometry, decisions, perturbation panel, multi-viewer | 2 to 4 | 3 | WP1 | Medium |
+| WP5 | Concurrency: session design, admission control, Compose with scaling, load tests LT-1 to LT-5 | 3 to 4 | 1, 3, 5 | WP1, WP2 | Medium to high |
+| WP6 | Experiment runner and reduced main experiment; communication experiment | 3 to 5 | 4 | WP2, WP3 | Medium |
+| WP7 | SHOULD items (replay, clean-versus-perturbed, SQLite) | 3 to 4 | 3, 1 | WP4 | Low |
+| WP8 | Freeze, final experiments, report, demo | 5 | all | all | |
+| WP-S | STRETCH items | any slack | 6 | | |
+
+### 9.3 Milestones
+
+| Milestone | End of week | Exit criterion |
+|-----------|-------------|----------------|
+| M0 Feasibility | 1 | Checkpoints load and act outside the repository; attack reproduces a measurable crash-rate increase; decisions D3 and configuration frozen |
+| M1 Walking skeleton | 2 | One run through agent service and UI; perturbation module wired |
+| M2 Core system | 3 | MUST system features working: fault shim, fallback, UI items, logs; first load test |
+| M3 Scale and tests | 4 | Compose deployment, LT-1 to LT-5 results, verification matrix mostly green; feature freeze |
+| M4 Delivery | 5 | Reduced main and communication experiments, report, demo |
+
+Cut order if late: stretch items, replay, SQLite, `cleanAction`, Compose scaling (keep S-a), real-time mode analysis (keep lockstep), then reduce the experiment grid (seeds, epsilons).
 
 ## 10. Risks (top items)
 
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|------------|--------|------------|
-| R1 | WocaR-DQN does not port or converge on highway-env | High | High | Staged ladder (D3); early feasibility test in WP0; PGD-AT as the fallback |
-| R2 | Baseline DQN is hard to train on merge or roundabout | Medium | High | Reward shaping; observation tuning; start early; fall back to the highway scenario for the main claims and report others as partial |
-| R3 | Evaluation attacks are weak so robustness looks better than it is | Medium | Medium | Multiple attacks; stronger attack at evaluation than training; unit test that the attack hurts the baseline |
-| R4 | Latency or deadline behaviour confusing results | Medium | Medium | Lockstep for the robustness grid; real-time only for the communication experiment |
-| R5 | Non-deterministic results (GPU, real network) | Medium | Medium | Seed everything; report tolerance; use CPU for evaluation if feasible |
-| R6 | Dependency conflicts (Python version, highway-env, PyTorch, Gymnasium) | Medium | Medium | Pin versions in WP0; CI from week 1 |
-| R7 | Compute shortage for multiple seeds | Medium | Medium | Measure early; reduce epsilon grid and seeds; use cluster if available |
-| R8 | Front-end effort for road geometry exceeds the plan | Medium | Low | Frame-streaming fallback (D8-b) |
-| R9 | Team availability and merge conflicts | Medium | Medium | Small interfaces, weekly integration, protocol package as the single contract |
-| R10 | Scope ambiguity ("secure" may mean network security or robustness, or both) | Medium | Medium | Cover both and keep them distinct (D9); confirm with the supervisor (Q2) |
+| R1 | Checkpoints do not load or behave differently outside the repository (dependency on `model_setup`, vendored `auto_LiRPA`, key mismatches) | Medium | High | WP0 in week 1 with output comparison against the repository loader; fallback: vendor the needed repository files; D3-b |
+| R2 | Environment configuration in our service differs from the repository (observation, vehicle count, frequencies) so agents behave worse than reported | Medium | High | Reuse the repository configuration and `highway_adapter.py` logic; reproduce one reported number in WP0 |
+| R3 | Simulation stepping is the throughput limit and the concurrency target (N) is not reachable on laptops | Medium | Medium | Measure in week 1; worker processes; reduce N; report the measured limit |
+| R4 | Three build weeks are too short for all MUST items | High | High | Strict cut line (section 9); skeleton in week 2; weekly integration |
+| R5 | Weak agents (23 to 31 percent clean crash rate) make safety claims untenable | Certain | Medium | State the limitation; claim only relative robustness; do not describe the system as safe |
+| R6 | Attack code is slow in the sim loop (about 10 forward and backward passes per step) and misses real-time deadlines | Medium | Medium | Lockstep for attack experiments; measure; run attacks in a process pool |
+| R7 | Event-loop blocking by CPU-heavy work degrades all sessions | Medium | Medium | Run stepping and attacks off the event loop; expose event-loop lag in `/load` |
+| R8 | Non-reproducible results (GPU, real network, multiprocessing) | Low to medium | Medium | CPU only, seeds per run, lockstep for the main experiment |
+| R9 | Licence or attribution problem with the models repository or its upstream code | Low | Medium | Check licences (Q5); attribute in report |
+| R10 | Front-end effort for road geometry exceeds plan | Medium | Low | Frame-streaming fallback (D8-b) |
+| R11 | Team coordination across 6 members with 3 implementers | Medium | Medium | Roles in 9.1; protocol package as the single contract; weekly integration |
 
-## 11. Open questions for the team and supervisor
+## 11. Open questions (still open after the team answers)
+
+Answered and removed: schedule and team size, meaning of "secure", simulation versus hardware, teleoperation, WocaR reproduction (use the existing models), compute (laptops, CPU).
 
 | ID | Question | Why it matters |
 |----|----------|----------------|
-| Q1 | Project duration, team size and weekly hours? | The whole schedule depends on them (ASM-1). |
-| Q2 | Does "secure" in the proposal mean robustness against state perturbations only, or also network security (authentication, TLS)? | Determines WP8 scope and weight. |
-| Q3 | Is a physical or scaled vehicle expected, or is simulation enough (ASM-3)? Is remote teleoperation expected (ASM-4)? | Would change D2, D1 and V&V (HIL). |
-| Q4 | Which observation features may the attacker perturb (all, or only continuous ones; is `presence` attackable)? What epsilon values are meaningful? | Defines the threat model and the NFR-SAF-3 thresholds. |
-| Q5 | Is WocaR-DQN reproduction mandatory (Proposal C1) or is "a robust method informed by the references" acceptable? | Drives the effort in WP5 and the fallback. |
-| Q6 | What compute is available (GPU, cluster, cloud credits)? Budget for a cloud VM? | NFR-COST-1, D10, training seeds. |
-| Q7 | What are acceptable robustness targets (NFR-SAF-3) and latency budgets (NFR-LAT-*)? | Acceptance criteria are placeholders. |
-| Q8 | Should the UI support multiple users with accounts, or is a shared token enough? | Privacy and security scope (NFR-PRV-1). |
-| Q9 | Which language and framework conventions does the team want (Python-only back end assumed, vanilla JS front end)? | Onboarding and maintainability. |
-| Q10 | Is a second driving environment worth the time, and which one? | Stretch scope. |
+| Q1 | Which observation features may the attacker perturb (all 50 inputs including `presence`, or only some)? The repository perturbs the full normalised vector at epsilon up to 0.01. Is keeping that threat model acceptable? | Defines the threat model and keeps results comparable with the repository |
+| Q2 | Is highway-v0 (the only environment with trained agents) enough for the proposal's "multiple driving environments", or must merge and roundabout be supported with trained agents? If yes, training moves from stretch to must. | Largest scope driver; the proposal names highway, merge and roundabout as examples and allows other environments |
+| Q3 | What deployment target and budget for the concurrency requirement: laptop only, a university server, or a cloud VM? | Selects S-c versus S-d and the N in NFR-SCAL-1 |
+| Q4 | What concurrency numbers does the supervisor expect (how many simultaneous clients, how many viewers)? | N and latency percentiles are placeholders |
+| Q5 | Licence and attribution of the models repository and the vendored WocaR-RL and `auto_LiRPA` code: who checks, and is the models repository allowed to be copied into the system repository or should it be a dependency (submodule, package)? | Repository structure and the report |
+| Q6 | Which checkpoint(s) are the official "served" ones (peak-of-mean frames of all 7 seeds, or a chosen seed)? Is the clean crash rate of 23 to 31 percent acceptable as the agent quality, or is improving clean driving a goal? | Defines the baseline for demos and for NFR-SAF-3 |
+| Q7 | Should the communication faults be evaluated in real-time mode (non-deterministic) or lockstep with emulated delay? | Experiment design (D6) |
+| Q8 | Does the UI need anything beyond a shared public page (accounts, run history per user)? Default: no. | Scope |
 
 ## 12. Review of the earlier draft (spec.md): what was kept, changed or removed
 
@@ -582,3 +646,6 @@ Corrected or changed:
 10. Aborted runs were marked `finished`; an `aborted` status is added so evaluations can exclude them.
 11. Added what the draft lacked entirely: stakeholders and constraints, traceable requirements, security and threat model, communication-fault emulation, V&V with acceptance criteria, schedule and risks.
 12. Removed the claim that tests use "the repo's own uv environment" as an architecture constraint; tooling choice is recorded as a convention, not a requirement.
+
+
+Revision v0.3 (after team answers): schedule and roles rebuilt for 3 build weeks; robustness-only security (network hardening removed, optional token kept); simulation and no teleoperation made explicit out-of-scope; training ladder replaced by reuse of the models repository (section 6A) with training as stretch; attack epsilon grid corrected to the repository scale; scalability and deployment section and load-test requirements added; risks and open questions rewritten.
