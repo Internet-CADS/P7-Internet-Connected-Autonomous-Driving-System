@@ -34,8 +34,10 @@ From the course (DSNSWK120 "Internet"): a multilayer internet application, with 
 
 ```mermaid
 flowchart LR
-    V[Vehicle clients: one highway-env each] <-->|obs / action| G[Gateway: sessions, perturbation, logging]
-    G -->|perturbed obs| I[Inference service: stateless replicas]
+    V[Vehicle clients: one highway-env each] -->|1. clean obs| G[Gateway: sessions, perturbation, logging]
+    G -->|2. perturbed obs| I[Inference service: the agent, stateless replicas]
+    I -->|3. action + scores| G
+    G -->|4. action| V
     G --> DB[(Run log)]
     UI[Web UI] <-->|runs + live events| G
 ```
