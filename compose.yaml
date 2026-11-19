@@ -1,0 +1,53 @@
+name: cads
+services:
+  inference:
+    image: cads-local
+    build: .
+    command: ["inference", "--host", "0.0.0.0"]
+    environment:
+      CADS_MODELS: /models
+    volumes:
+      - type: bind
+        source: ${CADS_MODELS:-./models}
+        target: /models
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz')"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  gateway:
+    image: cads-local
+    pull_policy: never
+    command: ["gateway", "--host", "0.0.0.0"]
+    environment:
+      CADS_MODELS: /models
+      CADS_REPLICAS: ws://inference:8001/ws/infer
+    volumes:
+      - type: bind
+        source: ${CADS_MODELS:-./models}
+        target: /models
+        read_only: true
+        bind:
+          create_host_path: false
+      - runs:/app/data
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      inference:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  demo:
+    image: cads-local
+    pull_policy: never
+    command: ["vehicle", "--url", "ws://gateway:8000/ws/vehicle", "--group", "wocar_dqn", "--method", "pgd", "--epsilon", "0.01"]
+    depends_on:
+      gateway:
+        condition: service_healthy
+volumes:
+  runs:

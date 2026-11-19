@@ -1,0 +1,8 @@
+{
+  "groups": ["vanilla_dqn", "sa_dqn", "wocar_dqn"],
+  "model_seeds": [1],
+  "methods": ["random_linf", "pgd", "minbest", "worst_q"],
+  "epsilons": [0, 0.01],
+  "episodes": 1,
+  "max_steps": 8
+}

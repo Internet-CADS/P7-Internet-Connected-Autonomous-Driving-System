@@ -1,0 +1,46 @@
+[project]
+name = "internet-cads"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi",
+    "gymnasium==1.4.0",
+    "highway-env==1.12.1",
+    "matplotlib",
+    "numpy==2.5.5",
+    "pydantic",
+    "torch==2.7.1",
+    "uvicorn",
+    "websockets",
+    "pyarrow",
+]
+
+[dependency-groups]
+dev = ["httpx", "pytest", "ruff"]
+
+[project.scripts]
+cads = "cads.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cads"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,15 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.5"
+      - run: uv sync --locked --python 3.13
+      - run: uv run --locked ruff check .
+      - run: uv run --locked pytest -q
+      - run: node --check cads/static/monitor.js
+      - run: docker compose config --quiet

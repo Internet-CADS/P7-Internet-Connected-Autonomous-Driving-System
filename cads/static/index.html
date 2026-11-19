@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CADS | Highway monitor</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/assets/monitor.js"></script>
+</head>
+<body>
+  <header><span class="wordmark">CADS</span><h1>Highway monitor</h1><span id="connection" role="status">Connecting</span></header>
+  <main>
+    <section class="toolbar" aria-label="Run selection">
+      <label for="runs">Simulation run</label>
+      <select id="runs"><option value="">Select a run</option></select>
+      <a id="download" hidden>Download log</a>
+    </section>
+    <p id="status" role="status">Start a vehicle client to see a run.</p>
+    <div id="monitor" hidden>
+      <div class="scene">
+        <canvas id="road" width="1000" height="300" role="img" aria-label="Simulated highway"></canvas>
+        <div class="timeline">
+          <button id="play" type="button">Play</button>
+          <label for="timeline">Step</label>
+          <input id="timeline" type="range" min="0" max="0" value="0">
+          <output id="step">—</output>
+          <button id="live" type="button">Latest</button>
+        </div>
+      </div>
+      <div class="panels">
+        <section class="card">
+          <h2>Agent decision</h2>
+          <p class="action" id="action">—</p>
+          <p class="muted" id="comparison"></p>
+          <table><thead><tr><th>Action</th><th>Clean Q</th><th>Perturbed Q</th></tr></thead><tbody id="scores"></tbody></table>
+        </section>
+        <section class="card">
+          <h2>State perturbation</h2>
+          <dl>
+            <div><dt>Method</dt><dd id="method">—</dd></div>
+            <div><dt>Budget ε</dt><dd id="epsilon">—</dd></div>
+            <div><dt>Measured L∞</dt><dd id="linf">—</dd></div>
+            <div><dt>Step reward</dt><dd id="reward">—</dd></div>
+            <div><dt>Gateway decision time</dt><dd id="gateway-ms">—</dd></div>
+          </dl>
+          <p class="muted" id="outcome"></p>
+        </section>
+      </div>
+      <details class="card">
+        <summary>Compare observation values</summary>
+        <table><thead><tr><th>Vehicle slot</th><th>Feature</th><th>Clean</th><th>Perturbed</th><th>Δ</th></tr></thead><tbody id="features"></tbody></table>
+      </details>
+      <details class="card">
+        <summary>Vehicle poses before action</summary>
+        <table><thead><tr><th>Vehicle</th><th>X (m)</th><th>Y (m)</th><th>Heading (rad)</th><th>Speed (m/s)</th></tr></thead><tbody id="poses"></tbody></table>
+      </details>
+    </div>
+  </main>
+</body>
+</html>
