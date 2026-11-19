@@ -40,4 +40,4 @@ uv run --locked cads load --runs 50 --viewers 5 --steps 20 --output data/load.js
 
 Tests create their own fixture weights. The smoke grid and load commands use the running services and the real checkpoints. The experiment runner saves the manifest, episode results, seed-level aggregate statistics and a plot. Use `experiments/reduced.json` for the full reduced grid of 15,300 episodes. Choose a fresh output directory for each experiment. The load runner uses synthetic observations by default. Add `--simulate` to include simulator stepping, or use `--rate 1` to pace the generated requests. Repeat the same workload with different `cads start --replicas` values to compare scaling.
 
-[Specification](docs/SPEC.md) · [Decisions](docs/DECISIONS.md) · [Implementation plan](docs/PLAN.md) · [Feasibility](docs/FEASIBILITY.md)
+[Specification](docs/SPEC.md) · [Decisions](docs/DECISIONS.md) · [Implementation plan](docs/PLAN.md) · [Feasibility](docs/FEASIBILITY.md) · [Verification results](docs/RESULTS.md)
