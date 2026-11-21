@@ -1,0 +1,48 @@
+// Vehicle link: one bidirectional stream per run (docs/ARCHITECTURE.md, section 6.1).
+syntax = "proto3";
+package icads.v1;
+
+service Gateway {
+  // Vehicle sends Hello, then Obs and Result per step.
+  // Gateway sends Welcome, then Action per step, and Summary last.
+  rpc Drive(stream VehicleMsg) returns (stream GatewayMsg);
+}
+
+message VehicleMsg { oneof msg { Hello hello = 1; Obs obs = 2; Result result = 3; } }
+message GatewayMsg { oneof msg { Welcome welcome = 1; Action action = 2; Summary summary = 3; } }
+
+message Hello {
+  uint32 protocol_version = 1;          // 1
+  string scenario = 2;                  // "highway-v0"
+  string env_config_json = 3;           // environment settings, checked against the reference
+  uint64 seed = 4;                      // environment seed, also seeds the perturbation
+  uint32 max_steps = 5;                 // default 60
+  string model_id = 6;                  // "wocar_dqn/1"
+  string attack = 7;                    // none, random_linf, pgd, minbest, worst_q
+  float epsilon = 8;
+  float pace_hz = 9;                    // 0 = unpaced; informational only
+  ObsSpec obs_spec = 10;
+  repeated string action_names = 11;    // in index order
+  Road road = 12;
+  map<string, string> labels = 13;      // experiment, cell, synthetic
+}
+message ObsSpec {
+  repeated string features = 1;         // presence, x, y, vx, vy
+  uint32 vehicles = 2;                  // 10 rows, ego first
+  bool absolute = 3;                    // false: rows 1 to 9 are relative to the ego
+  map<string, Range> ranges = 4;        // scaling per feature, read from the environment after reset
+}
+message Range { float low = 1; float high = 2; }
+message Road  { repeated Lane lanes = 1; }
+message Lane  { repeated Point polyline = 1; float width = 2; }
+message Point { float x = 1; float y = 2; }
+message Pose  { uint32 id = 1; float x = 2; float y = 3; float heading = 4; float speed = 5; }
+
+message Welcome { string run_id = 1; }
+message Obs     { uint32 t = 1; repeated float obs = 2; repeated Pose poses = 3; }   // poses: ego first
+message Action  { uint32 t = 1; uint32 action = 2; }
+message Result  { uint32 t = 1; float reward = 2; bool terminated = 3; bool truncated = 4;
+                  bool crashed = 5; float rtt_ms = 6; repeated Pose final_poses = 7; } // final_poses on the last step only
+message Summary { string run_id = 1; string status = 2;   // finished, aborted, error, refused
+                  string reason = 3; string message = 4;
+                  uint32 steps = 5; float total_reward = 6; bool crashed = 7; }

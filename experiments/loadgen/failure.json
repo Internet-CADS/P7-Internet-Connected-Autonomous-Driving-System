@@ -1,0 +1,11 @@
+{
+  "name": "failure",
+  "recording": "recording.jsonl",
+  "attack": "pgd",
+  "epsilon": 0.01,
+  "paceHz": 1,
+  "viewersPerRun": 1,
+  "durationS": 90,
+  "runs": [20],
+  "note": "steady load with 2 replicas of each service; scripts/failure_test.sh kills one perturbation replica, then one inference replica, while this runs"
+}

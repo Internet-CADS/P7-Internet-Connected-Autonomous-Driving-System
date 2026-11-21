@@ -1,0 +1,10 @@
+{
+  "name": "overload",
+  "recording": "recording.jsonl",
+  "attack": "none",
+  "paceHz": 1,
+  "viewersPerRun": 1,
+  "durationS": 60,
+  "runs": ["2x"],
+  "note": "twice the gateway's run limit at once"
+}

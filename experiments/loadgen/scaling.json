@@ -1,0 +1,11 @@
+{
+  "name": "scaling",
+  "recording": "recording.jsonl",
+  "attack": "pgd",
+  "epsilon": 0.01,
+  "paceHz": 0,
+  "viewersPerRun": 0,
+  "durationS": 30,
+  "runs": [32],
+  "note": "run once per perturbation replica count: docker compose up -d --scale perturbation=1 (then 2, then 4), wait at least 40 s so the gateway has reconnected to every replica (check /healthz), then docker compose run --rm loadgen experiments/loadgen/scaling.json; set runs to the saturation point found by the throughput profile. The result file records the replica count the gateway sees"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "capacity",
+  "recording": "recording.jsonl",
+  "attack": ["none", "pgd"],
+  "epsilon": 0.01,
+  "paceHz": 1,
+  "viewersPerRun": 5,
+  "durationS": 120,
+  "runs": [10, 50],
+  "note": "N runs at 1 Hz with 5 viewers each, without and with PGD"
+}

@@ -1,0 +1,9 @@
+{
+  "experiment": "reduced",
+  "groups": ["vanilla_dqn", "sa_dqn", "wocar_dqn"],
+  "seeds": [1, 2, 3],
+  "attacks": ["random_linf", "pgd", "minbest", "worst_q"],
+  "epsilons": [0, 0.0025, 0.005, 0.0075, 0.01],
+  "episodes": 100,
+  "workers": 6
+}

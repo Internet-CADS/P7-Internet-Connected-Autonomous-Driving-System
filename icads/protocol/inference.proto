@@ -1,0 +1,16 @@
+// Inference service: single, stateless calls (docs/ARCHITECTURE.md, sections 6.2 and 9).
+syntax = "proto3";
+package icads.v1;
+
+service Inference {
+  rpc Act(ActRequest) returns (ActReply);
+  rpc ListModels(ListModelsRequest) returns (ModelList);
+}
+message ActRequest { string model_id = 1; repeated float obs = 2;
+                     repeated float clean_obs = 3; }   // empty when not perturbed
+message ActReply   { uint32 action = 1; repeated float q = 2;
+                     uint32 clean_action = 3; repeated float clean_q = 4;
+                     string replica_id = 5; float handle_ms = 6; }
+message ListModelsRequest {}
+message ModelList { repeated Model models = 1; }
+message Model     { string id = 1; string group = 2; uint32 seed = 3; uint64 frame = 4; }

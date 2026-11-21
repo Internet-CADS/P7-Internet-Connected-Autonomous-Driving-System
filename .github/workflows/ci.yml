@@ -1,0 +1,23 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.6"
+      - run: uv sync --locked
+      - name: Generated gRPC code is up to date
+        run: |
+          ./scripts/gen_protos.sh
+          git diff --exit-code -- icads/protocol
+      - name: Typecheck
+        run: uv run pyright
+      - name: Tests
+        run: uv run pytest -q

@@ -1,0 +1,11 @@
+{
+  "name": "throughput",
+  "recording": "recording.jsonl",
+  "attack": "pgd",
+  "epsilon": 0.01,
+  "paceHz": 0,
+  "viewersPerRun": 0,
+  "durationS": 30,
+  "runs": [1, 2, 4, 8, 16, 32, 64],
+  "note": "unpaced replay vehicles, PGD in every run, concurrency 1 to 64"
+}

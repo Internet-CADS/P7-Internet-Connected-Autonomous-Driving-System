@@ -1,0 +1,10 @@
+// Perturbation service: single, stateless calls (docs/ARCHITECTURE.md, sections 6.2 and 8).
+syntax = "proto3";
+package icads.v1;
+
+service Perturbation {
+  rpc Perturb(PerturbRequest) returns (PerturbReply);
+}
+message PerturbRequest { string model_id = 1; string attack = 2; float epsilon = 3;
+                         uint64 seed = 4; uint32 t = 5; repeated float obs = 6; }
+message PerturbReply   { repeated float obs = 1; string replica_id = 2; float handle_ms = 3; }

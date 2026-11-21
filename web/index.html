@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ICADS runs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><a href="#">ICADS runs</a></h1>
+    <span id="conn" class="muted"></span>
+  </header>
+
+  <main>
+    <section id="list-view">
+      <table id="runs">
+        <thead>
+          <tr><th>Started</th><th>Model</th><th>Attack</th><th>ε</th><th>Seed</th><th>Status</th><th>Steps</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted">No runs yet. Start one with <code>icads vehicle --model wocar_dqn/1 --seed 7</code>.</p>
+    </section>
+
+    <section id="run-view" hidden>
+      <p><a href="#">← all runs</a></p>
+      <h2 id="run-title"></h2>
+      <p id="run-settings" class="muted"></p>
+      <canvas id="scene" width="1000" height="220" aria-label="Road and vehicles"></canvas>
+      <p id="step-line" class="step-line"></p>
+      <div class="row">
+        <div>
+          <h3>Q-values</h3>
+          <table id="qvalues"><tbody></tbody></table>
+        </div>
+        <div>
+          <h3>Attack</h3>
+          <p id="attack-info"></p>
+          <label id="overlay-toggle"><input type="checkbox" id="overlay" checked> Show where the agent believes the cars are</label>
+        </div>
+        <div>
+          <h3>Run</h3>
+          <p id="run-status"></p>
+          <p>
+            <a id="log-link" href="#" download>Download log</a>
+            <button id="abort" type="button" hidden>Abort run</button>
+          </p>
+        </div>
+      </div>
+      <div class="slider">
+        <input type="range" id="slider" min="0" max="0" value="0" aria-label="Step">
+        <div id="marks" class="marks" aria-hidden="true"></div>
+        <div class="controls">
+          <button type="button" id="play">Play</button>
+          <label>Speed
+            <select id="speed">
+              <option value="0.5">0.5×</option>
+              <option value="1">1× (real time)</option>
+              <option value="2" selected>2×</option>
+              <option value="4">4×</option>
+              <option value="8">8×</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="follow" checked> Follow live</label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="overlay.js"></script>
+  <script src="runlist.js"></script>
+  <script src="replay.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

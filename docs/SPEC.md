@@ -1,6 +1,6 @@
 # Internet Connected Autonomous Driving System: Specification (short form)
 
-Status: DRAFT v0.6. Deliberately short while the overall architecture is undecided. Requirements tables, interfaces, test matrix, schedule and risks come back once sections 4 and 6 are settled. The last long version is v0.5 (commit `4e87737`).
+Status: DRAFT v0.7. The architecture is decided: sections 4 and 6 summarise it, and [`ARCHITECTURE.md`](ARCHITECTURE.md) describes it in full. Requirements tables, interfaces, test matrix, schedule and risks come back in a later version. The last long version is v0.5 (commit `4e87737`).
 
 ## 1. What we are building
 
@@ -30,48 +30,61 @@ From the course (DSNSWK120 "Internet"): a multilayer internet application, with 
 - A perturbation is a pure function of the observation, model, attack, epsilon, seed and step. The model's weights never change.
 - Both the clean and the perturbed observation are logged for every step.
 
-## 4. Proposed architecture (not yet agreed)
+## 4. Architecture (decided)
 
 ```mermaid
 flowchart LR
-    V[Vehicle clients: one highway-env each] -->|1. clean obs| G[Gateway: sessions, perturbation, logging]
-    G -->|2. perturbed obs| I[Inference service: the agent, stateless replicas]
-    I -->|3. action + scores| G
-    G -->|4. action| V
-    G --> DB[(Run log)]
-    UI[Web UI] <-->|runs + live events| G
+    V["Vehicle clients: one highway-env each"] -->|"(1) clean obs"| G["Gateway: runs, checks, recording, live feed"]
+    G -->|"(2) clean obs"| P["Perturbation service: stateless replicas"]
+    P -->|"(3) perturbed obs"| G
+    G -->|"(4) perturbed and clean obs"| I["Inference service: the agent, stateless replicas"]
+    I -->|"(5) actions and Q-values"| G
+    G -->|"(6) action"| V
+    G --> DB[("SQLite: runs and steps")]
+    UI["Web page"] <-->|"REST and server-sent events"| G
 ```
 
-- Vehicle client: owns its environment, sends observations, applies the action it receives. No model.
-- Gateway: one session per run; validates input, applies the perturbation, calls inference, logs, feeds the browsers. Never picks an action.
-- Inference service: the agent. Stateless, so replicas can be added.
-- Web UI: live scene, chosen action, perturbation, agent response.
+- Vehicle client: owns its environment, starts its own run, sends observations, applies the action it receives. No model.
+- Gateway: one process, one session per run. Checks input, calls the perturbation and inference services, stores every step and feeds the browsers. Never runs a model and never picks an action.
+- Perturbation service: applies the run's attack to one observation. Stateless, so replicas can be added. It is the service the scaling experiment adds replicas to.
+- Inference service: the agent. Returns the action and Q-values for the perturbed and the clean observation. Stateless, so replicas can be added.
+- Web page: run list, live scene with the perturbation as a transparent overlay, the chosen and the clean action, replay.
+- Links: gRPC, with one stream per run from each vehicle and single calls to the two services. REST and server-sent events for the browser.
 
-Why this shape: the environments become real clients of the service (B1), the tiers are distinct (course), and the CPU-heavy environment stepping stays out of the server so load tests measure the service.
+Why this shape:
+
+- The environments become real clients of the service (B1).
+- The tiers are distinct (course).
+- The CPU-heavy environment stepping stays out of the service, so load tests measure the service.
+- The expensive attack stage scales on its own.
 
 ## 5. How we show it works
 
 - Robustness: a reduced grid (model x seed x attack x epsilon) run through the service, checking that the models repository ranking is reproduced (WocaR crashes less than vanilla under gradient attacks).
-- Scalability and quality of service: local load tests of concurrent runs, latency percentiles, throughput against replica count, overload and replica failure.
+- Scalability and quality of service: local load tests of concurrent runs, latency percentiles, throughput against the number of perturbation replicas, overload and replica failure.
 - User interface: a small task-based usability test with about 5 people.
 
-## 6. Open decisions
+## 6. Decisions
 
-| ID | Decision | Options | Leaning |
-|----|----------|---------|---------|
-| A1 | Topology | Vehicle clients, gateway, inference tier / one simulation service calling a remote agent (v0.4) | Vehicle clients |
-| A2 | Transport | gRPC and server-sent events / WebSocket with JSON / a broker such as NATS | gRPC and SSE |
-| A3 | Where perturbations run | Inside the gateway / a separate attacker service | Gateway first |
-| A4 | Who starts a run | The vehicle client / the UI | Vehicle client |
+| ID | Decision | Chosen | Rejected |
+|----|----------|--------|----------|
+| A1 | Topology | Vehicle clients, one gateway, stateless perturbation and inference services | One simulation service calling a remote agent (v0.4); vehicles talking straight to the agent |
+| A2 | Transport | gRPC: one stream per run from each vehicle, single calls to the services. REST and server-sent events for the browser | WebSocket with JSON; a broker such as NATS |
+| A3 | Where perturbations run | A separate stateless perturbation service | Inside the gateway; inside the inference service |
+| A4 | Who starts a run | The vehicle client | The UI |
+
+The other architecture decisions, with their reasons, are in the decision log in [`ARCHITECTURE.md`](ARCHITECTURE.md) (section 3).
 
 ## 7. Open questions for the supervisor
 
-| ID | Question |
-|----|----------|
-| Q1 | Which parts of the 50-value observation may the attacker perturb (all, as in the models repository)? |
-| Q2 | Licence and attribution of the models repository and its vendored code: copy files or depend on it? |
-| Q3 | What concurrency is expected in the load test? Placeholder: 50 runs, 5 viewers each. |
-| Q4 | Is a 23 to 31 percent clean crash rate acceptable for demos and experiments? |
-| Q5 | Is it acceptable to leave "unreliable communication" out of scope and make the vehicles the clients? |
-| Q6 | Does the UI need more than a single local page? Default: no. |
-| Q7 | What does the course expect of the UI evaluation? |
+Until the supervisor answers, the defaults in the last column apply. The defaults that affect the architecture are listed in [`ARCHITECTURE.md`](ARCHITECTURE.md) (section 19), with what changes if the answer differs.
+
+| ID | Question | Default used |
+|----|----------|--------------|
+| Q1 | Which parts of the 50-value observation may the attacker perturb (all, as in the models repository)? | All 50 values |
+| Q2 | Licence and attribution of the models repository and its vendored code: copy files or depend on it? | Copy the 21 checkpoint files with a note of their source; attribute the ported attack code |
+| Q3 | What concurrency is expected in the load test? Placeholder: 50 runs, 5 viewers each. | 50 runs, 5 viewers each |
+| Q4 | Is a 23 to 31 percent clean crash rate acceptable for demos and experiments? | Yes; only relative robustness is claimed |
+| Q5 | Is it acceptable to leave "unreliable communication" out of scope and make the vehicles the clients? | Yes |
+| Q6 | Does the UI need more than a single local page? | One local page |
+| Q7 | What does the course expect of the UI evaluation? | A task-based test with about 5 people (section 5) |

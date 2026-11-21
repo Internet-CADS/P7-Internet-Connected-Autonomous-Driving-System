@@ -1,0 +1,102 @@
+# One-command start (docs/ARCHITECTURE.md, section 16).
+#   docker compose up                          gateway, 2 inference and 2 perturbation replicas
+#   docker compose --profile demo up           ... plus three paced demo vehicles
+#   docker compose up --scale perturbation=4   4 perturbation replicas
+#   docker compose run --rm vehicle --model wocar_dqn/1 --seed 7 --attack pgd --epsilon 0.01
+#   docker compose run --rm experiments experiments/smoke.json
+#   docker compose run --rm loadgen experiments/loadgen/capacity.json
+name: icads
+
+x-icads: &icads
+  image: icads
+  build:
+    context: .
+    args:
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+  environment: &icads-env
+    # Optional: ICADS_IMAGE_ID=$(docker image inspect -f '{{.Id}}' icads); otherwise the id written at build
+    ICADS_IMAGE_ID: ${ICADS_IMAGE_ID:-}
+    # One value for the replicas' CPU limit (deploy.resources below) and for what result files record
+    ICADS_SERVICE_CPUS: ${ICADS_SERVICE_CPUS:-1}
+    # Optional: the host's CPU for result files (a container only sees the VM), e.g. on a Mac
+    #   ICADS_HOST_CPU="$(sysctl -n machdep.cpu.brand_string)" docker compose run --rm loadgen ...
+    ICADS_HOST_CPU: ${ICADS_HOST_CPU:-}
+
+services:
+  gateway:
+    <<: *icads
+    command: ["gateway"]
+    ports: ["127.0.0.1:8000:8000", "127.0.0.1:50051:50051"]
+    environment:
+      <<: *icads-env
+      # One channel per service, round robin over every replica Docker's DNS returns.
+      ICADS_INFERENCE: dns:///inference:50052
+      ICADS_PERTURBATION: dns:///perturbation:50053
+      ICADS_MAX_RUNS: "64"
+      ICADS_DB: /data/runs.sqlite
+      # Fallback if round robin over Docker's DNS does not reach every replica:
+      #   ICADS_BALANCE: per-replica
+      #   ICADS_INFERENCE: icads-inference-1:50052,icads-inference-2:50052
+      #   ICADS_PERTURBATION: icads-perturbation-1:50053,icads-perturbation-2:50053
+    volumes: ["./data:/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      inference: { condition: service_healthy }
+      perturbation: { condition: service_healthy }
+
+  inference:
+    <<: *icads
+    command: ["inference", "--port", "50052"]
+    healthcheck: &grpc-health
+      test: ["CMD", "icads", "health", "127.0.0.1:50052"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    deploy: { replicas: 2, resources: { limits: { cpus: "${ICADS_SERVICE_CPUS:-1}" } } }
+
+  perturbation:
+    <<: *icads
+    command: ["perturbation", "--port", "50053"]
+    healthcheck:
+      <<: *grpc-health
+      test: ["CMD", "icads", "health", "127.0.0.1:50053"]
+    deploy: { replicas: 2, resources: { limits: { cpus: "${ICADS_SERVICE_CPUS:-1}" } } }
+
+  demo:
+    <<: *icads
+    profiles: ["demo"]
+    command: ["demo", "--gateway", "gateway:50051", "--seed", "7", "--pace", "1"]
+    depends_on:
+      gateway: { condition: service_healthy }
+
+  # One-off tools: docker compose run --rm <tool> <arguments>, with the stack already up.
+  # They have no depends_on on purpose: `docker compose run` would otherwise start the dependencies again
+  # at their declared scale, undoing a `--scale perturbation=4`.
+  vehicle:
+    <<: *icads
+    profiles: ["tools"]
+    entrypoint: ["icads", "vehicle", "--gateway", "gateway:50051"]
+    command: ["--model", "wocar_dqn/1", "--seed", "7"]
+
+  experiments:
+    <<: *icads
+    profiles: ["tools"]
+    entrypoint: ["icads", "experiment", "--gateway", "gateway:50051", "--http", "http://gateway:8000",
+                 "--out", "/data/experiments"]
+    command: ["experiments/smoke.json"]
+    volumes: ["./data:/data"]
+
+  loadgen:
+    <<: *icads
+    profiles: ["tools"]
+    entrypoint: ["icads", "loadgen", "--gateway", "gateway:50051", "--http", "http://gateway:8000",
+                 "--out", "/data/loadtests"]
+    command: ["experiments/loadgen/capacity.json"]
+    environment:
+      <<: *icads-env
+      ICADS_RUNTIME: docker
+    volumes: ["./data:/data"]

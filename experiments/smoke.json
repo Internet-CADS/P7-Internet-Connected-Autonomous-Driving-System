@@ -1,0 +1,10 @@
+{
+  "experiment": "smoke",
+  "groups": ["vanilla_dqn", "wocar_dqn"],
+  "seeds": [1],
+  "attacks": ["pgd", "random_linf"],
+  "epsilons": [0, 0.01],
+  "episodes": 2,
+  "workers": 2,
+  "maxSteps": 10
+}
